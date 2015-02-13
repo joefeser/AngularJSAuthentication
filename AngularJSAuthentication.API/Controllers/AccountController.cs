@@ -8,6 +8,7 @@ using Microsoft.Owin.Security.OAuth;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -21,6 +22,7 @@ namespace AngularJSAuthentication.API.Controllers
     [RoutePrefix("api/Account")]
     public class AccountController : ApiController
     {
+        private static string access_token = null; //We use this to verify the user token and ask for a long token.
         private AuthRepository _repo = null;
 
         private IAuthenticationManager Authentication
@@ -31,28 +33,6 @@ namespace AngularJSAuthentication.API.Controllers
         public AccountController()
         {
             _repo = new AuthRepository();
-        }
-
-        // POST api/Account/Register
-        [AllowAnonymous]
-        [Route("Register")]
-        public async Task<IHttpActionResult> Register(UserModel userModel)
-        {
-             if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-             IdentityResult result = await _repo.RegisterUser(userModel);
-
-             IHttpActionResult errorResult = GetErrorResult(result);
-
-             if (errorResult != null)
-             {
-                 return errorResult;
-             }
-
-             return Ok();
         }
 
         // GET api/Account/ExternalLogin
@@ -109,6 +89,62 @@ namespace AngularJSAuthentication.API.Controllers
 
         }
 
+        [AllowAnonymous]
+        [HttpGet]
+        [Route("ObtainLocalAccessToken")]
+        public async Task<IHttpActionResult> ObtainLocalAccessToken(string provider, string externalAccessToken)
+        {
+
+            if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(externalAccessToken))
+            {
+                return BadRequest("Provider or external access token is not sent");
+            }
+
+            var verifiedAccessToken = await VerifyExternalAccessToken(provider, externalAccessToken);
+            if (verifiedAccessToken == null)
+            {
+                return BadRequest("Invalid Provider or External Access Token");
+            }
+
+            IdentityUser user = await _repo.FindAsync(new UserLoginInfo(provider, verifiedAccessToken.user_id));
+
+            bool hasRegistered = user != null;
+
+            if (!hasRegistered)
+            {
+                return BadRequest("External user is not registered");
+            }
+
+            //generate access token response
+            var accessTokenResponse = GenerateLocalAccessTokenResponse(user.UserName, provider, verifiedAccessToken.token ?? externalAccessToken);
+
+            return Ok(accessTokenResponse);
+
+        }
+
+        //Note this will most likely not be used.
+        // POST api/Account/Register
+        [AllowAnonymous]
+        [Route("Register")]
+        public async Task<IHttpActionResult> Register(UserModel userModel)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            IdentityResult result = await _repo.RegisterUser(userModel);
+
+            IHttpActionResult errorResult = GetErrorResult(result);
+
+            if (errorResult != null)
+            {
+                return errorResult;
+            }
+
+            return Ok();
+        }
+
         // POST api/Account/RegisterExternal
         [AllowAnonymous]
         [Route("RegisterExternal")]
@@ -156,42 +192,9 @@ namespace AngularJSAuthentication.API.Controllers
             }
 
             //generate access token response
-            var accessTokenResponse = GenerateLocalAccessTokenResponse(model.UserName);
+            var accessTokenResponse = GenerateLocalAccessTokenResponse(model.UserName, model.Provider, model.ExternalAccessToken);
 
             return Ok(accessTokenResponse);
-        }
-
-        [AllowAnonymous]
-        [HttpGet]
-        [Route("ObtainLocalAccessToken")]
-        public async Task<IHttpActionResult> ObtainLocalAccessToken(string provider, string externalAccessToken)
-        {
-
-            if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(externalAccessToken))
-            {
-                return BadRequest("Provider or external access token is not sent");
-            }
-
-            var verifiedAccessToken = await VerifyExternalAccessToken(provider, externalAccessToken);
-            if (verifiedAccessToken == null)
-            {
-                return BadRequest("Invalid Provider or External Access Token");
-            }
-
-            IdentityUser user = await _repo.FindAsync(new UserLoginInfo(provider, verifiedAccessToken.user_id));
-
-            bool hasRegistered = user != null;
-
-            if (!hasRegistered)
-            {
-                return BadRequest("External user is not registered");
-            }
-
-            //generate access token response
-            var accessTokenResponse = GenerateLocalAccessTokenResponse(user.UserName);
-
-            return Ok(accessTokenResponse);
-
         }
 
         protected override void Dispose(bool disposing)
@@ -203,8 +206,6 @@ namespace AngularJSAuthentication.API.Controllers
 
             base.Dispose(disposing);
         }
-
-        #region Helpers
 
         private IHttpActionResult GetErrorResult(IdentityResult result)
         {
@@ -254,24 +255,25 @@ namespace AngularJSAuthentication.API.Controllers
                 return "redirect_uri is invalid";
             }
 
-            var clientId = GetQueryString(Request, "client_id");
+            //var clientId = GetQueryString(Request, "client_id");
 
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return "client_Id is required";
-            }
+            //if (string.IsNullOrWhiteSpace(clientId))
+            //{
+            //    return "client_Id is required";
+            //}
 
-            var client = _repo.FindClient(clientId);
+            //Note, need to talk to marty to see if we want to validate the page that is making the oauth request. xss
+            //var client = _repo.FindClient(clientId);
 
-            if (client == null)
-            {
-                return string.Format("Client_id '{0}' is not registered in the system.", clientId);
-            }
+            //if (client == null)
+            //{
+            //    return string.Format("Client_id '{0}' is not registered in the system.", clientId);
+            //}
 
-            if (!string.Equals(client.AllowedOrigin, redirectUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
-            {
-                return string.Format("The given URL is not allowed by Client_id '{0}' configuration.", clientId);
-            }
+            //if (!string.Equals(client.AllowedOrigin, redirectUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
+            //{
+            //    return string.Format("The given URL is not allowed by Client_id '{0}' configuration.", clientId);
+            //}
 
             redirectUriOutput = redirectUri.AbsoluteUri;
 
@@ -294,66 +296,151 @@ namespace AngularJSAuthentication.API.Controllers
 
         private async Task<ParsedExternalAccessToken> VerifyExternalAccessToken(string provider, string accessToken)
         {
-            ParsedExternalAccessToken parsedToken = null;
-
-            var verifyTokenEndPoint = "";
-
-            if (provider == "Facebook")
+            if (provider.Equals("Facebook", StringComparison.OrdinalIgnoreCase))
             {
-                //You can get it from here: https://developers.facebook.com/tools/accesstoken/
-                //More about debug_tokn here: http://stackoverflow.com/questions/16641083/how-does-one-get-the-app-access-token-for-debug-token-inspection-on-facebook
-                var appToken = "xxxxxx";
-                verifyTokenEndPoint = string.Format("https://graph.facebook.com/debug_token?input_token={0}&access_token={1}", accessToken, appToken);
-            }
-            else if (provider == "Google")
-            {
-                verifyTokenEndPoint = string.Format("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={0}", accessToken);
+                return await VerifyFacebookAccessToken(provider, accessToken);
             }
             else
             {
                 return null;
             }
+        }
 
-            var client = new HttpClient();
-            var uri = new Uri(verifyTokenEndPoint);
-            var response = await client.GetAsync(uri);
+        private static async Task<ParsedExternalAccessToken> VerifyFacebookAccessToken(string provider, string accessToken)
+        {
+            ParsedExternalAccessToken parsedToken = null;
 
-            if (response.IsSuccessStatusCode)
+            var verifyTokenEndPoint = "";
+
+            var appToken = await EnsureAppToken();
+
+            //The token should never expire once we have it
+            //http://www.quora.com/Do-OAuth-app-access-tokens-in-Facebook-ever-expire-not-talking-about-user-access-tokens
+            //You can get it from here: https://developers.facebook.com/tools/accesstoken/
+            //More about debug_tokn here: http://stackoverflow.com/questions/16641083/how-does-one-get-the-app-access-token-for-debug-token-inspection-on-facebook
+            verifyTokenEndPoint = string.Format("https://graph.facebook.com/debug_token?input_token={0}&access_token={1}", accessToken, appToken);
+
+            var response = await MakeHttpCallWithRetry(verifyTokenEndPoint);
+
+            if (response.Message.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync();
-
-                dynamic jObj = (JObject)Newtonsoft.Json.JsonConvert.DeserializeObject(content);
-
+                var content = response.Response;
                 parsedToken = new ParsedExternalAccessToken();
 
-                if (provider == "Facebook")
+                var fbToken = Newtonsoft.Json.JsonConvert.DeserializeObject<FacebookDebugResult>(content);
+                parsedToken.user_id = fbToken.data.user_id.ToString();
+                parsedToken.app_id = fbToken.data.app_id.ToString();
+
+                if (fbToken.data != null && fbToken.data.error != null)
                 {
-                    parsedToken.user_id = jObj["data"]["user_id"];
-                    parsedToken.app_id = jObj["data"]["app_id"];
-
-                    if (!string.Equals(Startup.facebookAuthOptions.AppId, parsedToken.app_id, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return null;
-                    }
+                    //we have an issue, most likely we did not get an auth.
+                    parsedToken.code = fbToken.data.error.code;
+                    //subcode 458 is app was not authorized.
+                    //subcode 460 is Error validating access token: Session does not match current stored session.
+                    //This may be because the user changed the password since the time the session was created or Facebook has changed the session for security reasons 
+                    parsedToken.subcode = fbToken.data.error.subcode;
                 }
-                else if (provider == "Google")
+                if (!string.Equals(Startup.facebookAuthOptions.AppId, parsedToken.app_id, StringComparison.OrdinalIgnoreCase))
                 {
-                    parsedToken.user_id = jObj["user_id"];
-                    parsedToken.app_id = jObj["audience"];
-
-                    if (!string.Equals(Startup.googleAuthOptions.ClientId, parsedToken.app_id, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return null;
-                    }
-
+                    return null;
                 }
+                parsedToken.valid = true;
 
+                //now we want to go get the long life token
+
+                //go get the long token
+                verifyTokenEndPoint = string.Format("https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id={0}&client_secret={1}&fb_exchange_token={2}",
+                    ConfigurationManager.AppSettings["fbapp_appid"], ConfigurationManager.AppSettings["fbapp_appsecret"], accessToken);
+
+                response = await MakeHttpCallWithRetry(verifyTokenEndPoint);
+
+                if (response.Message.IsSuccessStatusCode)
+                {
+                    var kv = ParseIntoKeyValues(response.Response);
+                    var foundKey = kv.FirstOrDefault(item => item.Key == "access_token");
+                    parsedToken.token = foundKey.Value;
+                }
+            }
+            else
+            {
+                var content = response.Response;
+                var fbToken = Newtonsoft.Json.JsonConvert.DeserializeObject<FacebookDebugErrorResult>(content);
+
+                //TODO Log. We may want to refresh the token depending on the error and then retry.
+
+                return null;
             }
 
             return parsedToken;
         }
 
-        private JObject GenerateLocalAccessTokenResponse(string userName)
+        private static List<KeyValuePair<string, string>> ParseIntoKeyValues(string queryString)
+        {
+            var retVal = new List<KeyValuePair<string, string>>();
+
+            var keys = queryString.Split(new[] { '&' });
+
+            foreach (var key in keys)
+            {
+                var kv = key.Split(new[] { '=' });
+                if (kv.Length == 2)
+                {
+                    retVal.Add(new KeyValuePair<string, string>(kv[0], kv[1]));
+                }
+            }
+
+            return retVal;
+        }
+
+        private static async Task<string> EnsureAppToken()
+        {
+            if (!string.IsNullOrWhiteSpace(access_token))
+            {
+                return access_token;
+            }
+            var endPoint = string.Format("https://graph.facebook.com/oauth/access_token?client_id={0}&client_secret={1}&grant_type=client_credentials",
+                ConfigurationManager.AppSettings["fbapp_appid"], ConfigurationManager.AppSettings["fbapp_appsecret"]);
+            var result = await MakeHttpCallWithRetry(endPoint);
+
+            if (result.Response.Contains("access_token="))
+            {
+                var token = result.Response.Replace("access_token=", string.Empty);
+                access_token = token;
+                return access_token;
+            }
+            return null;
+        }
+
+        private static async Task<HttpResult> MakeHttpCallWithRetry(string endPoint)
+        {
+            int counter = 0;
+            while (true)
+            {
+                try
+                {
+                    counter++;
+                    var client = new HttpClient();
+                    var uri = new Uri(endPoint);
+                    var response = await client.GetAsync(uri);
+                    var result = await response.Content.ReadAsStringAsync();
+                    return new HttpResult()
+                    {
+                        Message = response,
+                        Response = result
+                    };
+                }
+                catch (Exception)
+                {
+                    //TODO log
+                    if (counter >= 5)
+                    {
+                        return null;
+                    }
+                }
+            }
+        }
+
+        private JObject GenerateLocalAccessTokenResponse(string userName, string provider, string externalAccessToken)
         {
 
             var tokenExpiration = TimeSpan.FromDays(1);
@@ -362,6 +449,8 @@ namespace AngularJSAuthentication.API.Controllers
 
             identity.AddClaim(new Claim(ClaimTypes.Name, userName));
             identity.AddClaim(new Claim("role", "user"));
+            identity.AddClaim(new Claim("provider", provider));
+            identity.AddClaim(new Claim("externalToken", externalAccessToken));
 
             var props = new AuthenticationProperties()
             {
@@ -383,6 +472,12 @@ namespace AngularJSAuthentication.API.Controllers
         );
 
             return tokenResponse;
+        }
+
+        private class HttpResult
+        {
+            public HttpResponseMessage Message { get; set; }
+            public string Response { get; set; }
         }
 
         private class ExternalLoginData
@@ -421,6 +516,41 @@ namespace AngularJSAuthentication.API.Controllers
             }
         }
 
-        #endregion
+        private class FacebookDebugErrorResult
+        {
+            public FacebookDebugErrorResultMessage error { get; set; }
+        }
+
+        private class FacebookDebugErrorResultMessage
+        {
+            public string message { get; set; }
+            public string type { get; set; }
+            public int code { get; set; }
+        }
+
+        private class FacebookDebugResult
+        {
+            public FacebookDebugResultData data { get; set; }
+        }
+
+        private class FacebookDebugResultError
+        {
+            public int code { get; set; }
+            public string message { get; set; }
+            public int subcode { get; set; }
+        }
+
+        private class FacebookDebugResultData
+        {
+            public long app_id { get; set; }
+            public string application { get; set; }
+            public FacebookDebugResultError error { get; set; }
+            public long expires_at { get; set; }
+            public bool is_valid { get; set; }
+            public long issued_at { get; set; }
+            public List<string> scopes { get; set; }
+            public long user_id { get; set; }
+        }
+
     }
 }

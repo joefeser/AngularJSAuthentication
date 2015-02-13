@@ -20,11 +20,11 @@ namespace AngularJSAuthentication.API.Models
         [Required]
         public string UserName { get; set; }
 
-         [Required]
+        [Required]
         public string Provider { get; set; }
 
-         [Required]
-         public string ExternalAccessToken { get; set; }
+        [Required]
+        public string ExternalAccessToken { get; set; }
 
     }
 
@@ -32,5 +32,9 @@ namespace AngularJSAuthentication.API.Models
     {
         public string user_id { get; set; }
         public string app_id { get; set; }
+        public bool valid { get; set; }
+        public int code { get; set; }
+        public int subcode { get; set; }
+        public string token { get; set; }
     }
 }

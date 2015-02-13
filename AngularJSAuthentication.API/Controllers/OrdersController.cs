@@ -15,10 +15,10 @@ namespace AngularJSAuthentication.API.Controllers
         [Route("")]
         public IHttpActionResult Get()
         {
-            //ClaimsPrincipal principal = Request.GetRequestContext().Principal as ClaimsPrincipal;
+            ClaimsPrincipal principal = Request.GetRequestContext().Principal as ClaimsPrincipal;
 
-            //var Name = ClaimsPrincipal.Current.Identity.Name;
-            //var Name1 = User.Identity.Name;
+            var Name = ClaimsPrincipal.Current.Identity.Name;
+            var Name1 = User.Identity.Name;
 
             //var userName = principal.Claims.Where(c => c.Type == "sub").Single().Value;
 
