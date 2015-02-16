@@ -1,7 +1,7 @@
 ﻿using AngularJSAuthentication.API.Providers;
 using Microsoft.Owin;
 using Microsoft.Owin.Security.Facebook;
-using Microsoft.Owin.Security.Google;
+using Microsoft.Owin.Security.Twitter;
 using Microsoft.Owin.Security.OAuth;
 using Owin;
 using System;
@@ -19,7 +19,7 @@ namespace AngularJSAuthentication.API
     public class Startup
     {
         public static OAuthBearerAuthenticationOptions OAuthBearerOptions { get; private set; }
-        public static GoogleOAuth2AuthenticationOptions googleAuthOptions { get; private set; }
+        public static TwitterAuthenticationOptions twitterAuthOptions { get; private set; }
         public static FacebookAuthenticationOptions facebookAuthOptions { get; private set; }
 
         public void Configuration(IAppBuilder app)
@@ -55,13 +55,11 @@ namespace AngularJSAuthentication.API
             app.UseOAuthBearerAuthentication(OAuthBearerOptions);
 
             //Configure Google External Login
-            googleAuthOptions = new GoogleOAuth2AuthenticationOptions()
-            {
-                ClientId = "xxxxxx",
-                ClientSecret = "xxxxxx",
-                Provider = new GoogleAuthProvider()
+            twitterAuthOptions = new TwitterAuthenticationOptions()
+            { 
+                Provider = new TwitterAuthProvider()
             };
-            app.UseGoogleAuthentication(googleAuthOptions);
+            app.UseTwitterAuthentication(twitterAuthOptions);
 
             //Configure Facebook External Login
             facebookAuthOptions = new FacebookAuthenticationOptions()
