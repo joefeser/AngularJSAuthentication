@@ -26,11 +26,15 @@ namespace AngularJSAuthentication.API.Models
         [Required]
         public string ExternalAccessToken { get; set; }
 
+        //[Required]
+        //needed for Twitter.
+        public string ExternalAccessSecretToken { get; set; }
     }
 
     public class ParsedExternalAccessToken
     {
         public string user_id { get; set; }
+        public string screen_name { get; set; } //twitter
         public string app_id { get; set; }
         public bool valid { get; set; }
         public int code { get; set; }

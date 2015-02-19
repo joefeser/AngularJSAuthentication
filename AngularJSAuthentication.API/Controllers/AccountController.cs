@@ -3,16 +3,22 @@ using AngularJSAuthentication.API.Results;
 using Microsoft.AspNet.Identity;
 using Microsoft.AspNet.Identity.EntityFramework;
 using Microsoft.AspNet.Identity.Owin;
+using Microsoft.Owin;
+using Microsoft.Owin.Helpers;
 using Microsoft.Owin.Security;
 using Microsoft.Owin.Security.OAuth;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Http;
@@ -38,10 +44,12 @@ namespace AngularJSAuthentication.API.Controllers
         // GET api/Account/ExternalLogin
         [OverrideAuthentication]
         [HostAuthentication(DefaultAuthenticationTypes.ExternalCookie)]
+        [HostAuthentication(DefaultAuthenticationTypes.ExternalBearer)] //refresh token support
         [AllowAnonymous]
         [Route("ExternalLogin", Name = "ExternalLogin")]
         public async Task<IHttpActionResult> GetExternalLogin(string provider, string error = null)
         {
+
             string redirectUri = string.Empty;
 
             if (error != null)
@@ -78,12 +86,13 @@ namespace AngularJSAuthentication.API.Controllers
 
             bool hasRegistered = user != null;
 
-            redirectUri = string.Format("{0}#external_access_token={1}&provider={2}&haslocalaccount={3}&external_user_name={4}",
+            redirectUri = string.Format("{0}#external_access_token={1}&provider={2}&haslocalaccount={3}&external_user_name={4}&external_access_secret_token={5}",
                                             redirectUri,
                                             externalLogin.ExternalAccessToken,
                                             externalLogin.LoginProvider,
                                             hasRegistered.ToString(),
-                                            externalLogin.UserName);
+                                            externalLogin.UserName,
+                                            externalLogin.ExternalAccessSectretToken);
 
             return Redirect(redirectUri);
 
@@ -92,7 +101,7 @@ namespace AngularJSAuthentication.API.Controllers
         [AllowAnonymous]
         [HttpGet]
         [Route("ObtainLocalAccessToken")]
-        public async Task<IHttpActionResult> ObtainLocalAccessToken(string provider, string externalAccessToken)
+        public async Task<IHttpActionResult> ObtainLocalAccessToken(string provider, string externalAccessToken, string externalAccessSecretToken)
         {
 
             if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(externalAccessToken))
@@ -100,7 +109,7 @@ namespace AngularJSAuthentication.API.Controllers
                 return BadRequest("Provider or external access token is not sent");
             }
 
-            var verifiedAccessToken = await VerifyExternalAccessToken(provider, externalAccessToken);
+            var verifiedAccessToken = await VerifyExternalAccessToken(provider, externalAccessToken, externalAccessSecretToken);
             if (verifiedAccessToken == null)
             {
                 return BadRequest("Invalid Provider or External Access Token");
@@ -116,7 +125,7 @@ namespace AngularJSAuthentication.API.Controllers
             }
 
             //generate access token response
-            var accessTokenResponse = GenerateLocalAccessTokenResponse(user.UserName, provider, verifiedAccessToken.token ?? externalAccessToken);
+            var accessTokenResponse = GenerateLocalAccessTokenResponse(user.UserName, provider, verifiedAccessToken.token ?? externalAccessToken, externalAccessSecretToken);
 
             return Ok(accessTokenResponse);
 
@@ -146,7 +155,9 @@ namespace AngularJSAuthentication.API.Controllers
         }
 
         // POST api/Account/RegisterExternal
-        [AllowAnonymous]
+        //[AllowAnonymous]
+        [OverrideAuthentication]
+        [HostAuthentication(DefaultAuthenticationTypes.ExternalBearer)]
         [Route("RegisterExternal")]
         public async Task<IHttpActionResult> RegisterExternal(RegisterExternalBindingModel model)
         {
@@ -156,7 +167,9 @@ namespace AngularJSAuthentication.API.Controllers
                 return BadRequest(ModelState);
             }
 
-            var verifiedAccessToken = await VerifyExternalAccessToken(model.Provider, model.ExternalAccessToken);
+            var state = Request.GetOwinContext();
+
+            var verifiedAccessToken = await VerifyExternalAccessToken(model.Provider, model.ExternalAccessToken, model.ExternalAccessSecretToken);
             if (verifiedAccessToken == null)
             {
                 return BadRequest("Invalid Provider or External Access Token");
@@ -192,7 +205,7 @@ namespace AngularJSAuthentication.API.Controllers
             }
 
             //generate access token response
-            var accessTokenResponse = GenerateLocalAccessTokenResponse(model.UserName, model.Provider, model.ExternalAccessToken);
+            var accessTokenResponse = GenerateLocalAccessTokenResponse(model.UserName, model.Provider, model.ExternalAccessToken, model.ExternalAccessSecretToken);
 
             return Ok(accessTokenResponse);
         }
@@ -294,16 +307,32 @@ namespace AngularJSAuthentication.API.Controllers
             return match.Value;
         }
 
-        private async Task<ParsedExternalAccessToken> VerifyExternalAccessToken(string provider, string accessToken)
+        private async Task<ParsedExternalAccessToken> VerifyExternalAccessToken(string provider, string accessToken, string accessSectret)
         {
             if (provider.Equals("Facebook", StringComparison.OrdinalIgnoreCase))
             {
                 return await VerifyFacebookAccessToken(provider, accessToken);
             }
+            else if (provider.Equals("Twitter", StringComparison.OrdinalIgnoreCase))
+            {
+                return await VerifyTwitterAccessToken(provider, accessToken, accessSectret);
+            }
             else
             {
                 return null;
             }
+        }
+
+        private async Task<ParsedExternalAccessToken> VerifyTwitterAccessToken(string provider, string accessToken, string userSecret)
+        {
+            var verify = new TwitterAuthenticationHandler();
+            ParsedExternalAccessToken result = await verify.ObtainCredentialInformationAsync(ConfigurationManager.AppSettings["twitterapp_appid"], ConfigurationManager.AppSettings["twitterapp_appsecret"], new RequestToken()
+                {
+                    Token = accessToken,
+                    TokenSecret = userSecret
+                });
+
+            return result;
         }
 
         private static async Task<ParsedExternalAccessToken> VerifyFacebookAccessToken(string provider, string accessToken)
@@ -312,7 +341,7 @@ namespace AngularJSAuthentication.API.Controllers
 
             var verifyTokenEndPoint = "";
 
-            var appToken = await EnsureAppToken();
+            var appToken = await EnsureFacebookAppToken();
 
             //The token should never expire once we have it
             //http://www.quora.com/Do-OAuth-app-access-tokens-in-Facebook-ever-expire-not-talking-about-user-access-tokens
@@ -392,7 +421,7 @@ namespace AngularJSAuthentication.API.Controllers
             return retVal;
         }
 
-        private static async Task<string> EnsureAppToken()
+        private static async Task<string> EnsureFacebookAppToken()
         {
             if (!string.IsNullOrWhiteSpace(access_token))
             {
@@ -440,7 +469,7 @@ namespace AngularJSAuthentication.API.Controllers
             }
         }
 
-        private JObject GenerateLocalAccessTokenResponse(string userName, string provider, string externalAccessToken)
+        private JObject GenerateLocalAccessTokenResponse(string userName, string provider, string externalAccessToken, string exteralAccessSecretToken)
         {
 
             var tokenExpiration = TimeSpan.FromDays(1);
@@ -451,6 +480,7 @@ namespace AngularJSAuthentication.API.Controllers
             identity.AddClaim(new Claim("role", "user"));
             identity.AddClaim(new Claim("provider", provider));
             identity.AddClaim(new Claim("externalToken", externalAccessToken));
+            identity.AddClaim(new Claim("externalSecretToken", exteralAccessSecretToken));
 
             var props = new AuthenticationProperties()
             {
@@ -486,6 +516,7 @@ namespace AngularJSAuthentication.API.Controllers
             public string ProviderKey { get; set; }
             public string UserName { get; set; }
             public string ExternalAccessToken { get; set; }
+            public string ExternalAccessSectretToken { get; set; }
 
             public static ExternalLoginData FromIdentity(ClaimsIdentity identity)
             {
@@ -506,13 +537,21 @@ namespace AngularJSAuthentication.API.Controllers
                     return null;
                 }
 
-                return new ExternalLoginData
+                var retVal = new ExternalLoginData
                 {
                     LoginProvider = providerKeyClaim.Issuer,
                     ProviderKey = providerKeyClaim.Value,
                     UserName = identity.FindFirstValue(ClaimTypes.Name),
                     ExternalAccessToken = identity.FindFirstValue("ExternalAccessToken"),
                 };
+
+                var secret = identity.FindFirst("externalSecretToken"); //twitter only;
+                if (secret != null && !string.IsNullOrWhiteSpace(secret.Value))
+                {
+                    retVal.ExternalAccessSectretToken = secret.Value;
+                }
+
+                return retVal;
             }
         }
 
@@ -550,6 +589,162 @@ namespace AngularJSAuthentication.API.Controllers
             public long issued_at { get; set; }
             public List<string> scopes { get; set; }
             public long user_id { get; set; }
+        }
+
+        private class TwitterUserSettings
+        {
+            //these are the only ones that we need.
+            public long id { get; set; }
+            public string screen_name { get; set; }
+            public bool verified { get; set; }
+        }
+
+        /// <summary>
+        /// Twitter request token
+        /// </summary>
+        public class RequestToken
+        {
+            /// <summary>
+            /// Gets or sets the Twitter token
+            /// </summary>
+            public string Token
+            {
+                get;
+                set;
+            }
+            /// <summary>
+            /// Gets or sets the Twitter token secret
+            /// </summary>
+            public string TokenSecret
+            {
+                get;
+                set;
+            }
+            public bool CallbackConfirmed
+            {
+                get;
+                set;
+            }
+            /// <summary>
+            /// Gets or sets a property bag for common authentication properties
+            /// </summary>
+            public AuthenticationProperties Properties
+            {
+                get;
+                set;
+            }
+        }
+
+        public class TwitterAuthenticationHandler
+        {
+            private const string SettingsEndpoint = "https://api.twitter.com/1.1/account/verify_credentials.json";
+
+            private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            private readonly HttpClient _httpClient = new HttpClient();
+
+            public async Task<ParsedExternalAccessToken> ObtainCredentialInformationAsync(string consumerKey, string consumerSecret, RequestToken token)
+            {
+                string nonce = Guid.NewGuid().ToString("N");
+                SortedDictionary<string, string> sortedDictionary = new SortedDictionary<string, string>
+			    {
+				    {
+					    "oauth_consumer_key",
+					    consumerKey
+				    },
+				    {
+					    "oauth_nonce",
+					    nonce
+				    },
+				    {
+					    "oauth_signature_method",
+					    "HMAC-SHA1"
+				    },
+				    {
+					    "oauth_token",
+					    token.Token
+				    },
+				    {
+					    "oauth_timestamp",
+					    TwitterAuthenticationHandler.GenerateTimeStamp()
+				    },
+                    {
+					    "oauth_version",
+					    "1.0"
+				    },
+				
+				    {
+					    "include_entities",
+					    "false"
+				    },
+                    {
+					    "skip_status",
+					    "true"
+				    }
+			    };
+                StringBuilder stringBuilder = new StringBuilder();
+                foreach (KeyValuePair<string, string> current in sortedDictionary)
+                {
+                    stringBuilder.AppendFormat("{0}={1}&", Uri.EscapeDataString(current.Key), Uri.EscapeDataString(current.Value));
+                }
+                stringBuilder.Length--;
+                string stringToEscape = stringBuilder.ToString();
+                StringBuilder stringBuilder2 = new StringBuilder();
+                stringBuilder2.Append(HttpMethod.Get.Method);
+                stringBuilder2.Append("&");
+                stringBuilder2.Append(Uri.EscapeDataString(SettingsEndpoint));
+                stringBuilder2.Append("&");
+                stringBuilder2.Append(Uri.EscapeDataString(stringToEscape));
+                string signature = TwitterAuthenticationHandler.ComputeSignature(consumerSecret, token.TokenSecret, stringBuilder2.ToString());
+                sortedDictionary.Add("oauth_signature", signature);
+                StringBuilder oauthHeader = new StringBuilder();
+                oauthHeader.Append("OAuth ");
+                foreach (KeyValuePair<string, string> current2 in sortedDictionary)
+                {
+                    oauthHeader.AppendFormat("{0}=\"{1}\", ", current2.Key, Uri.EscapeDataString(current2.Value));
+                }
+                oauthHeader.Length -= 2;
+                HttpRequestMessage httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, SettingsEndpoint + "?include_entities=false&skip_status=true");
+                httpRequestMessage.Headers.Add("Authorization", oauthHeader.ToString());
+                HttpResponseMessage httpResponseMessage = await this._httpClient.SendAsync(httpRequestMessage, new CancellationToken());
+                if (!httpResponseMessage.IsSuccessStatusCode)
+                {
+                    httpResponseMessage.EnsureSuccessStatusCode();
+                }
+                string text = await httpResponseMessage.Content.ReadAsStringAsync();
+
+                var response = Newtonsoft.Json.JsonConvert.DeserializeObject<TwitterUserSettings>(text);
+
+                IFormCollection formCollection = WebHelpers.ParseForm(text);
+                return new ParsedExternalAccessToken
+                {
+                    token = token.Token,
+                    screen_name = response.screen_name,
+                    app_id = 0.ToString(),
+                    valid = true,
+                    user_id = response.id.ToString()
+                };
+            }
+
+            private static string GenerateTimeStamp()
+            {
+                return Convert.ToInt64((DateTime.UtcNow - TwitterAuthenticationHandler.Epoch).TotalSeconds).ToString(CultureInfo.InvariantCulture);
+            }
+
+            private static string ComputeSignature(string consumerSecret, string tokenSecret, string signatureData)
+            {
+                string result;
+                using (HMACSHA1 hMACSHA = new HMACSHA1())
+                {
+                    hMACSHA.Key = Encoding.ASCII.GetBytes(string.Format(CultureInfo.InvariantCulture, "{0}&{1}", new object[]
+				    {
+					    Uri.EscapeDataString(consumerSecret),
+					    string.IsNullOrEmpty(tokenSecret) ? string.Empty : Uri.EscapeDataString(tokenSecret)
+				    }));
+                    byte[] inArray = hMACSHA.ComputeHash(Encoding.ASCII.GetBytes(signatureData));
+                    result = Convert.ToBase64String(inArray);
+                }
+                return result;
+            }
         }
 
     }

@@ -21,7 +21,10 @@ namespace AngularJSAuthentication.API.Providers
 
         public Task Authenticated(TwitterAuthenticatedContext context)
         {
+            context.Identity.AddClaim(new Claim("urn:tokens:twitter:accesstoken", context.AccessToken));
+            context.Identity.AddClaim(new Claim("urn:tokens:twitter:accesstokensecret", context.AccessTokenSecret));
             context.Identity.AddClaim(new Claim("ExternalAccessToken", context.AccessToken));
+            context.Identity.AddClaim(new Claim("ExternalSecretToken", context.AccessTokenSecret));
             return Task.FromResult<object>(null);
         }
 

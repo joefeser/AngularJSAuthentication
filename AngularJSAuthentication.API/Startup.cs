@@ -57,9 +57,12 @@ namespace AngularJSAuthentication.API
             //Configure Google External Login
             twitterAuthOptions = new TwitterAuthenticationOptions()
             { 
+                ConsumerKey = "z0RKYfHR5lVS1EDlsstSJDFPx",
+                ConsumerSecret = "p5wAIYDeF62U5kQ2rb85eav1NJ7caNXHLXF50LS0Lu5GdwG5O6",
                 Provider = new TwitterAuthProvider()
             };
             app.UseTwitterAuthentication(twitterAuthOptions);
+            //app.UseTwitterAuthentication("z0RKYfHR5lVS1EDlsstSJDFPx", "p5wAIYDeF62U5kQ2rb85eav1NJ7caNXHLXF50LS0Lu5GdwG5O6");
 
             //Configure Facebook External Login
             facebookAuthOptions = new FacebookAuthenticationOptions()

@@ -117,6 +117,14 @@ namespace AngularJSAuthentication.API
             return result;
         }
 
+        public async Task<IdentityResult> AddClaimAsync(string userId, Claim claim)
+        {
+            var claims = await _userManager.GetClaimsAsync(userId);
+            var result = await _userManager.AddClaimAsync(userId, claim);
+
+            return result;
+        }
+
         public void Dispose()
         {
             _ctx.Dispose();
