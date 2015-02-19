@@ -1,6 +1,7 @@
 ﻿using AngularJSAuthentication.API.Models;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
@@ -20,8 +21,11 @@ namespace AngularJSAuthentication.API.Providers
         private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private readonly HttpClient _httpClient = new HttpClient();
 
-        public async Task<ParsedExternalAccessToken> ObtainCredentialInformationAsync(string consumerKey, string consumerSecret, string userToken, string userSecret)
+        public async Task<ParsedExternalAccessToken> ObtainCredentialInformationAsync(string userToken, string userSecret)
         {
+            string consumerKey = ConfigurationManager.AppSettings["twitterapp_appid"];
+            string consumerSecret = ConfigurationManager.AppSettings["twitterapp_appsecret"];
+
             string nonce = Guid.NewGuid().ToString("N");
             SortedDictionary<string, string> sortedDictionary = new SortedDictionary<string, string>
 			    {

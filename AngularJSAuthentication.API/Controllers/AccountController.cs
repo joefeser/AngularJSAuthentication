@@ -29,7 +29,6 @@ namespace AngularJSAuthentication.API.Controllers
     [RoutePrefix("api/Account")]
     public class AccountController : ApiController
     {
-        private static string access_token = null; //We use this to verify the user token and ask for a long token.
         private AuthRepository _repo = null;
 
         private IAuthenticationManager Authentication
@@ -292,11 +291,11 @@ namespace AngularJSAuthentication.API.Controllers
         {
             if (provider.Equals("Facebook", StringComparison.OrdinalIgnoreCase))
             {
-                return await VerifyFacebookAccessToken(provider, accessToken);
+                return await VerifyFacebookAccessToken(accessToken);
             }
             else if (provider.Equals("Twitter", StringComparison.OrdinalIgnoreCase))
             {
-                return await VerifyTwitterAccessToken(provider, accessToken, accessSectret);
+                return await VerifyTwitterAccessToken(accessToken, accessSectret);
             }
             else
             {
@@ -304,146 +303,18 @@ namespace AngularJSAuthentication.API.Controllers
             }
         }
 
-        private async Task<ParsedExternalAccessToken> VerifyTwitterAccessToken(string provider, string accessToken, string userSecret)
+        private async Task<ParsedExternalAccessToken> VerifyFacebookAccessToken(string accessToken)
         {
-            var verify = new TwitterAuthenticationHandler();
-            ParsedExternalAccessToken result = await verify.ObtainCredentialInformationAsync(ConfigurationManager.AppSettings["twitterapp_appid"], ConfigurationManager.AppSettings["twitterapp_appsecret"], accessToken, userSecret);
-
-            return result;
-        }
-
-        private static async Task<ParsedExternalAccessToken> VerifyFacebookAccessToken(string provider, string accessToken)
-        {
-            ParsedExternalAccessToken parsedToken = null;
-
-            var verifyTokenEndPoint = "";
-
-            var appToken = await EnsureFacebookAppToken();
-
-            //The token should never expire once we have it
-            //http://www.quora.com/Do-OAuth-app-access-tokens-in-Facebook-ever-expire-not-talking-about-user-access-tokens
-            //You can get it from here: https://developers.facebook.com/tools/accesstoken/
-            //More about debug_tokn here: http://stackoverflow.com/questions/16641083/how-does-one-get-the-app-access-token-for-debug-token-inspection-on-facebook
-            verifyTokenEndPoint = string.Format("https://graph.facebook.com/debug_token?input_token={0}&access_token={1}", accessToken, appToken);
-
-            var response = await MakeHttpCallWithRetry(verifyTokenEndPoint);
-
-            if (response.Message.IsSuccessStatusCode)
-            {
-                var content = response.Response;
-                parsedToken = new ParsedExternalAccessToken();
-
-                var fbToken = Newtonsoft.Json.JsonConvert.DeserializeObject<FacebookDebugResult>(content);
-                parsedToken.user_id = fbToken.data.user_id.ToString();
-                parsedToken.app_id = fbToken.data.app_id.ToString();
-
-                if (fbToken.data != null && fbToken.data.error != null)
-                {
-                    //we have an issue, most likely we did not get an auth.
-                    parsedToken.code = fbToken.data.error.code;
-                    //subcode 458 is app was not authorized.
-                    //subcode 460 is Error validating access token: Session does not match current stored session.
-                    //This may be because the user changed the password since the time the session was created or Facebook has changed the session for security reasons 
-                    parsedToken.subcode = fbToken.data.error.subcode;
-                }
-                if (!string.Equals(Startup.facebookAuthOptions.AppId, parsedToken.app_id, StringComparison.OrdinalIgnoreCase))
-                {
-                    return null;
-                }
-                parsedToken.valid = true;
-
-                //now we want to go get the long life token
-
-                //go get the long token
-                verifyTokenEndPoint = string.Format("https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id={0}&client_secret={1}&fb_exchange_token={2}",
-                    ConfigurationManager.AppSettings["fbapp_appid"], ConfigurationManager.AppSettings["fbapp_appsecret"], accessToken);
-
-                response = await MakeHttpCallWithRetry(verifyTokenEndPoint);
-
-                if (response.Message.IsSuccessStatusCode)
-                {
-                    var kv = ParseIntoKeyValues(response.Response);
-                    var foundKey = kv.FirstOrDefault(item => item.Key == "access_token");
-                    parsedToken.token = foundKey.Value;
-                }
-            }
-            else
-            {
-                var content = response.Response;
-                var fbToken = Newtonsoft.Json.JsonConvert.DeserializeObject<FacebookDebugErrorResult>(content);
-
-                //TODO Log. We may want to refresh the token depending on the error and then retry.
-
-                return null;
-            }
-
-            return parsedToken;
-        }
-
-        private static List<KeyValuePair<string, string>> ParseIntoKeyValues(string queryString)
-        {
-            var retVal = new List<KeyValuePair<string, string>>();
-
-            var keys = queryString.Split(new[] { '&' });
-
-            foreach (var key in keys)
-            {
-                var kv = key.Split(new[] { '=' });
-                if (kv.Length == 2)
-                {
-                    retVal.Add(new KeyValuePair<string, string>(kv[0], kv[1]));
-                }
-            }
-
+            var verify = new FacebookAuthenticationHandler();
+            var retVal = await verify.VerifyFacebookAccessToken(accessToken);
             return retVal;
         }
 
-        private static async Task<string> EnsureFacebookAppToken()
+        private async Task<ParsedExternalAccessToken> VerifyTwitterAccessToken(string accessToken, string userSecret)
         {
-            if (!string.IsNullOrWhiteSpace(access_token))
-            {
-                return access_token;
-            }
-            var endPoint = string.Format("https://graph.facebook.com/oauth/access_token?client_id={0}&client_secret={1}&grant_type=client_credentials",
-                ConfigurationManager.AppSettings["fbapp_appid"], ConfigurationManager.AppSettings["fbapp_appsecret"]);
-            var result = await MakeHttpCallWithRetry(endPoint);
-
-            if (result.Response.Contains("access_token="))
-            {
-                var token = result.Response.Replace("access_token=", string.Empty);
-                access_token = token;
-                return access_token;
-            }
-            return null;
-        }
-
-        private static async Task<HttpResult> MakeHttpCallWithRetry(string endPoint)
-        {
-            int counter = 0;
-            while (true)
-            {
-                try
-                {
-                    counter++;
-                    var client = new HttpClient();
-                    var uri = new Uri(endPoint);
-                    var response = await client.GetAsync(uri);
-                    var result = await response.Content.ReadAsStringAsync();
-                    return new HttpResult()
-                    {
-                        Message = response,
-                        Response = result
-                    };
-                }
-                catch (Exception)
-                {
-                    //TODO log
-                    if (counter >= 5)
-                    {
-                        return null;
-                    }
-                }
-            }
+            var verify = new TwitterAuthenticationHandler();
+            var retVal = await verify.ObtainCredentialInformationAsync(accessToken, userSecret);
+            return retVal;
         }
 
         private JObject GenerateLocalAccessTokenResponse(string userName, string provider, string externalAccessToken, string exteralAccessSecretToken)
@@ -457,8 +328,10 @@ namespace AngularJSAuthentication.API.Controllers
             identity.AddClaim(new Claim("role", "user"));
             identity.AddClaim(new Claim("provider", provider));
             identity.AddClaim(new Claim("externalToken", externalAccessToken));
-            identity.AddClaim(new Claim("externalSecretToken", exteralAccessSecretToken));
-
+            if (exteralAccessSecretToken != null)
+            {
+                identity.AddClaim(new Claim("externalSecretToken", exteralAccessSecretToken));
+            }
             var props = new AuthenticationProperties()
             {
                 IssuedUtc = DateTime.UtcNow,
@@ -479,12 +352,6 @@ namespace AngularJSAuthentication.API.Controllers
         );
 
             return tokenResponse;
-        }
-
-        private class HttpResult
-        {
-            public HttpResponseMessage Message { get; set; }
-            public string Response { get; set; }
         }
 
     }

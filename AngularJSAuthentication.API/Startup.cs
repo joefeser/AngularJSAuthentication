@@ -41,8 +41,9 @@ namespace AngularJSAuthentication.API
             app.UseExternalSignInCookie(Microsoft.AspNet.Identity.DefaultAuthenticationTypes.ExternalCookie);
             OAuthBearerOptions = new OAuthBearerAuthenticationOptions();
 
-            OAuthAuthorizationServerOptions OAuthServerOptions = new OAuthAuthorizationServerOptions() {
-            
+            OAuthAuthorizationServerOptions OAuthServerOptions = new OAuthAuthorizationServerOptions()
+            {
+
                 AllowInsecureHttp = true,
                 TokenEndpointPath = new PathString("/token"),
                 AccessTokenExpireTimeSpan = TimeSpan.FromMinutes(30),
@@ -56,9 +57,9 @@ namespace AngularJSAuthentication.API
 
             //Configure Google External Login
             twitterAuthOptions = new TwitterAuthenticationOptions()
-            { 
-                ConsumerKey = "z0RKYfHR5lVS1EDlsstSJDFPx",
-                ConsumerSecret = "p5wAIYDeF62U5kQ2rb85eav1NJ7caNXHLXF50LS0Lu5GdwG5O6",
+            {
+                ConsumerKey = ConfigurationManager.AppSettings["twitterapp_appid"],
+                ConsumerSecret = ConfigurationManager.AppSettings["twitterapp_appsecret"],
                 Provider = new TwitterAuthProvider()
             };
             app.UseTwitterAuthentication(twitterAuthOptions);

@@ -149,6 +149,8 @@
     <Compile Include="Models\TwitterOAuthModels.cs" />
     <Compile Include="Models\UserModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Providers\BaseAuthenticationHandler.cs" />
+    <Compile Include="Providers\FacebookAuthenticationHandler.cs" />
     <Compile Include="Providers\FacebookAuthProvider.cs" />
     <Compile Include="Providers\TwitterAuthenticationHandler.cs" />
     <Compile Include="Providers\TwitterAuthProvider.cs" />
