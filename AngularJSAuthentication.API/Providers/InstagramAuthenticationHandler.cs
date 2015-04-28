@@ -51,7 +51,7 @@ namespace AngularJSAuthentication.API.Providers
             }
 
             resultData = await MakeHttpCallWithRetry("https://api.instagram.com/v1/users/self/?access_token=" + userToken);
-            var userDataResult = JsonConvert.DeserializeObject<TwitterOauthTokenResult>(resultData.Response);
+            var userDataResult = JsonConvert.DeserializeObject<InstagramOauthTokenResult>(resultData.Response);
 
             if (userDataResult != null && userDataResult.data != null && !string.IsNullOrWhiteSpace(userDataResult.data.username))
             {

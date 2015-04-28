@@ -151,7 +151,7 @@
     <Compile Include="Models\FaceBookOauthModels.cs" />
     <Compile Include="Models\InstagramOauthModel.cs" />
     <Compile Include="Models\TwitterOAuthModels.cs" />
-    <Compile Include="Models\TwitterOauthTokenResult.cs" />
+    <Compile Include="Models\InstagramOauthTokenResult.cs" />
     <Compile Include="Models\UserModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Providers\BaseAuthenticationHandler.cs" />
