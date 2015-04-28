@@ -38,6 +38,35 @@ namespace AngularJSAuthentication.API.Providers
             }
         }
 
+        protected async Task<HttpResult> MakeHttpPostWithRetry(string endPoint, HttpContent content)
+        {
+            int counter = 0;
+            while (true)
+            {
+                try
+                {
+                    counter++;
+                    var client = new HttpClient();
+                    var uri = new Uri(endPoint);
+                    var response = await client.PostAsync(uri, content);
+                    var result = await response.Content.ReadAsStringAsync();
+                    return new HttpResult()
+                    {
+                        Message = response,
+                        Response = result
+                    };
+                }
+                catch (Exception)
+                {
+                    //TODO log
+                    if (counter >= 5)
+                    {
+                        return null;
+                    }
+                }
+            }
+        }
+
         protected List<KeyValuePair<string, string>> ParseIntoKeyValues(string queryString)
         {
             var retVal = new List<KeyValuePair<string, string>>();

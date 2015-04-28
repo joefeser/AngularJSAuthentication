@@ -11,6 +11,7 @@ using System.Data.Entity;
 using System.Linq;
 using System.Web;
 using System.Web.Http;
+using Aminjam.Owin.Security.Instagram;
 
 [assembly: OwinStartup(typeof(AngularJSAuthentication.API.Startup))]
 
@@ -21,6 +22,7 @@ namespace AngularJSAuthentication.API
         public static OAuthBearerAuthenticationOptions OAuthBearerOptions { get; private set; }
         public static TwitterAuthenticationOptions twitterAuthOptions { get; private set; }
         public static FacebookAuthenticationOptions facebookAuthOptions { get; private set; }
+        public static InstagramAuthenticationOptions instagramAuthOptions { get; private set; }
 
         public void Configuration(IAppBuilder app)
         {
@@ -73,7 +75,14 @@ namespace AngularJSAuthentication.API
             };
             app.UseFacebookAuthentication(facebookAuthOptions);
 
+            //Configure Facebook External Login
+            instagramAuthOptions = new InstagramAuthenticationOptions()
+            {
+                ClientId = ConfigurationManager.AppSettings["instagram_appid"],
+                ClientSecret = ConfigurationManager.AppSettings["instagram_appsecret"],
+                Provider = new InstagramAuthProvider()
+            };
+            app.UseInstagramAuthentication(instagramAuthOptions);
         }
     }
-
 }

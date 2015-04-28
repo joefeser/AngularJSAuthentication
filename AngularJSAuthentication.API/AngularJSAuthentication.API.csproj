@@ -38,6 +38,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Aminjam.Owin.Security.Instagram">
+      <HintPath>..\packages\Aminjam.Owin.Security.Instagram.0.0.2\lib\net45\Aminjam.Owin.Security.Instagram.dll</HintPath>
+    </Reference>
     <Reference Include="EntityFramework">
       <HintPath>..\packages\EntityFramework.6.1.0\lib\net45\EntityFramework.dll</HintPath>
     </Reference>
@@ -146,12 +149,16 @@
     <Compile Include="Models\ExternalLoginData.cs" />
     <Compile Include="Models\ExternalLoginModels.cs" />
     <Compile Include="Models\FaceBookOauthModels.cs" />
+    <Compile Include="Models\InstagramOauthModel.cs" />
     <Compile Include="Models\TwitterOAuthModels.cs" />
+    <Compile Include="Models\TwitterOauthTokenResult.cs" />
     <Compile Include="Models\UserModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Providers\BaseAuthenticationHandler.cs" />
     <Compile Include="Providers\FacebookAuthenticationHandler.cs" />
     <Compile Include="Providers\FacebookAuthProvider.cs" />
+    <Compile Include="Providers\InstagramAuthenticationHandler.cs" />
+    <Compile Include="Providers\InstagramAuthProvider.cs" />
     <Compile Include="Providers\TwitterAuthenticationHandler.cs" />
     <Compile Include="Providers\TwitterAuthProvider.cs" />
     <Compile Include="Providers\SimpleAuthorizationServerProvider.cs" />

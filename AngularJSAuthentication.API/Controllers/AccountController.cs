@@ -29,7 +29,7 @@ namespace AngularJSAuthentication.API.Controllers
     [RoutePrefix("api/Account")]
     public class AccountController : ApiController
     {
-        private AuthRepository _repo = null;
+        private AuthRepository repo = null;
 
         private IAuthenticationManager Authentication
         {
@@ -38,7 +38,7 @@ namespace AngularJSAuthentication.API.Controllers
 
         public AccountController()
         {
-            _repo = new AuthRepository();
+            repo = new AuthRepository();
         }
 
         // GET api/Account/ExternalLogin
@@ -82,7 +82,7 @@ namespace AngularJSAuthentication.API.Controllers
                 return new ChallengeResult(provider, this);
             }
 
-            IdentityUser user = await _repo.FindAsync(new UserLoginInfo(externalLogin.LoginProvider, externalLogin.ProviderKey));
+            IdentityUser user = await repo.FindAsync(new UserLoginInfo(externalLogin.LoginProvider, externalLogin.ProviderKey));
 
             bool hasRegistered = user != null;
 
@@ -123,7 +123,7 @@ namespace AngularJSAuthentication.API.Controllers
                 return BadRequest("Invalid Provider or External Access Token");
             }
 
-            IdentityUser user = await _repo.FindAsync(new UserLoginInfo(provider, verifiedAccessToken.user_id));
+            IdentityUser user = await repo.FindAsync(new UserLoginInfo(provider, verifiedAccessToken.user_id));
 
             bool hasRegistered = user != null;
 
@@ -150,7 +150,7 @@ namespace AngularJSAuthentication.API.Controllers
                 return BadRequest(ModelState);
             }
 
-            IdentityResult result = await _repo.RegisterUser(userModel);
+            IdentityResult result = await repo.RegisterUser(userModel);
 
             IHttpActionResult errorResult = GetErrorResult(result);
 
@@ -183,7 +183,7 @@ namespace AngularJSAuthentication.API.Controllers
                 return BadRequest("Invalid Provider or External Access Token");
             }
 
-            IdentityUser user = await _repo.FindAsync(new UserLoginInfo(model.Provider, verifiedAccessToken.user_id));
+            IdentityUser user = await repo.FindAsync(new UserLoginInfo(model.Provider, verifiedAccessToken.user_id));
 
             bool hasRegistered = user != null;
 
@@ -194,7 +194,7 @@ namespace AngularJSAuthentication.API.Controllers
 
             user = new IdentityUser() { UserName = model.UserName };
 
-            IdentityResult result = await _repo.CreateAsync(user);
+            IdentityResult result = await repo.CreateAsync(user);
             if (!result.Succeeded)
             {
                 return GetErrorResult(result);
@@ -206,7 +206,7 @@ namespace AngularJSAuthentication.API.Controllers
                 Login = new UserLoginInfo(model.Provider, verifiedAccessToken.user_id)
             };
 
-            result = await _repo.AddLoginAsync(user.Id, info.Login);
+            result = await repo.AddLoginAsync(user.Id, info.Login);
             if (!result.Succeeded)
             {
                 return GetErrorResult(result);
@@ -222,7 +222,7 @@ namespace AngularJSAuthentication.API.Controllers
         {
             if (disposing)
             {
-                _repo.Dispose();
+                repo.Dispose();
             }
 
             base.Dispose(disposing);
@@ -305,6 +305,10 @@ namespace AngularJSAuthentication.API.Controllers
             {
                 return await VerifyTwitterAccessToken(accessToken, accessSectret);
             }
+            else if (provider.Equals("Instagram", StringComparison.OrdinalIgnoreCase))
+            {
+                return await VerifyInstagramAccessToken(accessToken, accessSectret);
+            }
             else
             {
                 return null;
@@ -322,6 +326,13 @@ namespace AngularJSAuthentication.API.Controllers
         {
             var verify = new TwitterAuthenticationHandler();
             var retVal = await verify.ObtainCredentialInformationAsync(accessToken, userSecret);
+            return retVal;
+        }
+
+        private async Task<ParsedExternalAccessToken> VerifyInstagramAccessToken(string accessToken, string userSecret)
+        {
+            var verify = new InstagramAuthenticationHandler();
+            var retVal = await verify.ObtainCredentialInformationAsync(accessToken);
             return retVal;
         }
 
