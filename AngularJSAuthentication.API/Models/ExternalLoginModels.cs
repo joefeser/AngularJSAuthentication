@@ -15,6 +15,20 @@ namespace AngularJSAuthentication.API.Models
         public string State { get; set; }
     }
 
+    public class ObtainLocalAccessTokenModel
+    {
+
+        [Required]
+        public string Provider { get; set; }
+
+        [Required]
+        public string ExternalAccessToken { get; set; }
+
+        //[Required]
+        //needed for Twitter.
+        public string ExternalAccessSecretToken { get; set; }
+    }
+
     public class RegisterExternalBindingModel
     {
         [Required]

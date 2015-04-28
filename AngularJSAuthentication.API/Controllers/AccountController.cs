@@ -99,6 +99,14 @@ namespace AngularJSAuthentication.API.Controllers
         }
 
         [AllowAnonymous]
+        [HttpPost]
+        [Route("ObtainLocalAccessToken")]
+        public async Task<IHttpActionResult> ObtainLocalAccessToken(ObtainLocalAccessTokenModel model)
+        {
+            return await ObtainLocalAccessToken(model.Provider, model.ExternalAccessToken, model.ExternalAccessSecretToken);
+        }
+
+        [AllowAnonymous]
         [HttpGet]
         [Route("ObtainLocalAccessToken")]
         public async Task<IHttpActionResult> ObtainLocalAccessToken(string provider, string externalAccessToken, string externalAccessSecretToken)
